@@ -1,0 +1,7 @@
+streamlit
+folium
+pandas
+scikit-learn
+numpy
+requests
+datetime
