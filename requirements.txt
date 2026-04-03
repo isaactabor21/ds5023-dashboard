@@ -9,3 +9,4 @@ plotly
 xgboost
 lightgbm
 catboost
+joblib
