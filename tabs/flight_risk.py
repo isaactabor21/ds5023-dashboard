@@ -1,310 +1,297 @@
 """
 Flight Risk Analysis Tab
 ========================
-Shows detailed risk breakdown for a selected flight.
-Explains WHY a flight has its predicted on-time probability.
+Shows detailed risk breakdown for selected flight.
+Milestone 3: uses real OpenWeatherMap data for weather cards and
+dynamically adjusts the on-time probability based on live conditions.
 """
 
 import streamlit as st
 from datetime import datetime
 import plotly.graph_objects as go
-from data import get_probability_color, flights_data
+from data import get_probability_color, flights_data, fetch_airport_weather, compute_weather_adjusted_prob
+
+GREEN  = '#3fb950'
+YELLOW = '#d29922'
+RED    = '#f85149'
+BG_GREEN  = '#0d2818'
+BG_YELLOW = '#2d1f00'
+BG_RED    = '#2d0f0f'
+TEXT_GREEN  = '#3fb950'
+TEXT_YELLOW = '#d29922'
+TEXT_RED    = '#f85149'
+BORDER_COLOR = '#30363d'
+CARD_BG      = '#0d1117'
 
 
-# =============================================================================
-# SETTINGS
-# =============================================================================
-
-# Colors
-GREEN = '#28a745'
-YELLOW = '#ffc107'
-RED = '#dc3545'
-
-# Background colors for cards
-BG_GREEN = '#d4edda'
-BG_YELLOW = '#fff3cd'
-BG_RED = '#f8d7da'
+def get_risk_level(prob):
+    if prob >= 67: return "LOW RISK"
+    elif prob >= 33: return "MEDIUM RISK"
+    return "HIGH RISK"
 
 
-# =============================================================================
-# HELPER FUNCTIONS
-# =============================================================================
-
-def get_risk_level(probability: int) -> str:
-    """Return risk level text based on probability."""
-    if probability >= 67:
-        return "LOW RISK"
-    elif probability >= 33:
-        return "MEDIUM RISK"
-    else:
-        return "HIGH RISK"
+def get_bar_color(prob):
+    if prob >= 67: return GREEN
+    elif prob >= 33: return YELLOW
+    return RED
 
 
-def get_bar_color(probability: int) -> str:
-    """Return bar color based on probability."""
-    if probability >= 67:
-        return GREEN
-    elif probability >= 33:
-        return YELLOW
-    else:
-        return RED
-
-
-# =============================================================================
-# DISPLAY COMPONENTS
-# =============================================================================
-
-def render_flight_header(flight: dict):
-    """Show flight info at the top of the page."""
+def render_flight_header(flight):
     col1, col2, col3, col4 = st.columns([1, 2, 2, 2])
-    
     with col1:
-        if st.session_state.search_params:
-            dep_date = st.session_state.search_params.get("departure_date", datetime.today())
-            st.markdown(f"**{dep_date.strftime('%b %d')}**")
-        else:
-            st.markdown("**Dec 16**")
+        dep = st.session_state.search_params.get("departure_date", datetime.today()) if st.session_state.get("search_params") else datetime.today()
+        st.markdown(f"**{dep.strftime('%b %d') if hasattr(dep,'strftime') else dep}**")
     with col2:
         st.markdown(f"**{flight['airline']} {flight['flight_num']}**")
     with col3:
         st.markdown(f"**{flight['origin']}** → **{flight['destination']}**")
     with col4:
-        st.markdown(f"**{flight['departure']} - {flight['arrival']}** · {flight['duration']}")
+        st.markdown(f"**{flight['departure']} – {flight['arrival']}** · {flight['duration']}")
 
 
-def render_probability_badge(flight: dict, color: str, risk_level: str):
-    """Show the big probability badge."""
+def render_probability_badge(prob, color, risk_level, is_adjusted=False):
+    label = "WEATHER-ADJUSTED PROBABILITY" if is_adjusted else "ON-TIME PROBABILITY"
+    note  = "<div style='font-size:11px;opacity:0.7;margin-top:4px;'>adjusted for live weather</div>" if is_adjusted else ""
     st.markdown(f"""
-        <div style="background-color: {color}; color: white; padding: 15px 25px;
-                    border-radius: 10px; text-align: center; display: inline-block; margin: 15px 0;">
-            <div style="font-size: 36px; font-weight: bold;">{flight['on_time_prob']}%</div>
-            <div style="font-size: 14px;">On-Time Probability · {risk_level}</div>
-        </div>
-    """, unsafe_allow_html=True)
+        <div style="background:{color}22;border:2px solid {color};color:{color};
+                    padding:15px 25px;border-radius:12px;text-align:center;
+                    display:inline-block;margin:15px 0;">
+            <div style="font-size:36px;font-weight:700;font-family:'Space Mono',monospace;">{prob}%</div>
+            <div style="font-size:12px;opacity:0.9;letter-spacing:1px;">{label} · {risk_level}</div>
+            {note}
+        </div>""", unsafe_allow_html=True)
 
 
-def render_weather_cards(flight: dict):
-    """Show weather conditions at both airports."""
-    col1, col2 = st.columns(2)
-    
-    # Origin weather (always good for demo)
-    with col1:
+def weather_card(iata, weather, side="origin"):
+    """
+    Render a weather card. Handles 3 states:
+      1. Real data (source = "current" or "forecast") — shows live conditions
+      2. Beyond forecast window (source = "unavailable") — explains 5-day limit
+      3. None — no API key or unknown airport, shows estimated fallback
+    """
+    # ── State 2: beyond 5-day forecast window ────────────────────────────────
+    if weather and weather.get("source") == "unavailable":
+        days_out = weather.get("days_out", "?")
         st.markdown(f"""
-            <div style="background-color: {BG_GREEN}; border-left: 6px solid {GREEN};
-                        padding: 15px; border-radius: 8px; margin-bottom: 15px;">
-                <h4 style="color: #155724; margin: 0 0 10px 0;">🌤️ Weather at {flight['origin']}</h4>
-                <p style="margin: 0; color: #155724; font-size: 14px;">
-                    Clear skies, 34°F<br>Low wind. No icing risk.
+            <div style="background:{CARD_BG};border:1px solid {BORDER_COLOR};border-left:4px solid #58a6ff;
+                        padding:15px;border-radius:10px;margin-bottom:15px;">
+                <h4 style="color:#58a6ff;margin:0 0 8px;">📅 Weather at {iata}</h4>
+                <p style="margin:0;color:#8b949e;font-size:13px;">
+                    Your flight is <strong style="color:#e6edf3;">{days_out} days away</strong> —
+                    forecasts are only available up to 5 days in advance.<br>
+                    <em style="font-size:11px;">Check back closer to your departure for live conditions.</em>
                 </p>
-            </div>
-        """, unsafe_allow_html=True)
-    
-    # Destination weather (bad if low probability)
-    with col2:
-        if flight['on_time_prob'] < 50:
-            st.markdown(f"""
-                <div style="background-color: {BG_YELLOW}; border-left: 6px solid {RED};
-                            padding: 15px; border-radius: 8px; margin-bottom: 15px;">
-                    <h4 style="color: {RED}; margin: 0 0 10px 0;">⚠️ Weather at {flight['destination']}</h4>
-                    <p style="margin: 0; color: #856404; font-size: 14px;">
-                        Heavy Snow, 28°F<br>High wind. Icing risk.
-                    </p>
-                </div>
-            """, unsafe_allow_html=True)
+            </div>""", unsafe_allow_html=True)
+        return
+
+    # ── State 1: real weather data ────────────────────────────────────────────
+    if weather and weather.get("source") in ("current", "forecast"):
+        penalty = weather["weather_risk_penalty"]
+        if penalty >= 20:
+            bg, border, text = BG_RED,    TEXT_RED,    TEXT_RED
+            risk_label = "⚠️ High delay risk"
+        elif penalty >= 10:
+            bg, border, text = BG_YELLOW, TEXT_YELLOW, TEXT_YELLOW
+            risk_label = "⚠️ Moderate delay risk"
         else:
-            st.markdown(f"""
-                <div style="background-color: {BG_GREEN}; border-left: 6px solid {GREEN};
-                            padding: 15px; border-radius: 8px; margin-bottom: 15px;">
-                    <h4 style="color: #155724; margin: 0 0 10px 0;">🌤️ Weather at {flight['destination']}</h4>
-                    <p style="margin: 0; color: #155724; font-size: 14px;">
-                        Clear skies, 42°F<br>Calm conditions.
-                    </p>
+            bg, border, text = BG_GREEN,  TEXT_GREEN,  TEXT_GREEN
+            risk_label = "✅ Low delay risk"
+
+        source_label = (
+            f"Forecast for {weather.get('forecast_dt', 'departure time')} · OpenWeatherMap"
+            if weather["source"] == "forecast"
+            else "Current conditions · OpenWeatherMap"
+        )
+
+        st.markdown(f"""
+            <div style="background:{bg};border:1px solid {border}44;border-left:4px solid {border};
+                        padding:15px;border-radius:10px;margin-bottom:15px;">
+                <h4 style="color:{text};margin:0 0 10px;">
+                    {weather['icon']} {iata} — {weather['description']}
+                </h4>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;color:#8b949e;font-size:13px;">
+                    <div>🌡️ <strong style="color:#e6edf3;">{weather['temp_f']}°F</strong> (feels {weather['feels_like']}°F)</div>
+                    <div>💨 Wind: <strong style="color:#e6edf3;">{weather['wind_mph']} mph</strong></div>
+                    <div>👁️ Visibility: <strong style="color:#e6edf3;">{weather['visibility_mi']} mi</strong></div>
+                    <div>💧 Humidity: <strong style="color:#e6edf3;">{weather['humidity']}%</strong></div>
                 </div>
-            """, unsafe_allow_html=True)
+                <div style="margin-top:10px;font-size:12px;color:{text};font-weight:600;">{risk_label}</div>
+                <div style="font-size:11px;color:#8b949e;margin-top:2px;">{source_label}</div>
+            </div>""", unsafe_allow_html=True)
+        return
+
+    # ── State 3: no API key or unknown airport — estimated fallback ───────────
+    st.markdown(f"""
+        <div style="background:{CARD_BG};border:1px solid {BORDER_COLOR};border-left:4px solid #30363d;
+                    padding:15px;border-radius:10px;margin-bottom:15px;">
+            <h4 style="color:#8b949e;margin:0 0 8px;">🌤️ Weather at {iata}</h4>
+            <p style="margin:0;color:#8b949e;font-size:13px;">Estimated conditions<br>
+            <em style="font-size:11px;">Add OPENWEATHER_KEY to secrets.toml for live forecasts</em></p>
+        </div>""", unsafe_allow_html=True)
 
 
-def render_performance_cards(flight: dict):
-    """Show route performance and airport congestion."""
+def render_performance_cards(flight, adjusted_prob):
     col1, col2 = st.columns(2)
-    
-    delay_pct = 100 - flight['on_time_prob']
-    
-    # Route performance card
+    delay_pct = 100 - adjusted_prob
+
     with col1:
-        if delay_pct > 50:
-            bg, border, text = BG_RED, RED, "#721c24"
-        elif delay_pct > 25:
-            bg, border, text = BG_YELLOW, YELLOW, "#856404"
-        else:
-            bg, border, text = BG_GREEN, GREEN, "#155724"
-        
+        if delay_pct > 50:   bg, border, text = BG_RED,    TEXT_RED,    TEXT_RED
+        elif delay_pct > 25: bg, border, text = BG_YELLOW, TEXT_YELLOW, TEXT_YELLOW
+        else:                bg, border, text = BG_GREEN,  TEXT_GREEN,  TEXT_GREEN
         st.markdown(f"""
-            <div style="background-color: {bg}; border-left: 6px solid {border};
-                        padding: 15px; border-radius: 8px; margin-bottom: 15px;">
-                <h4 style="color: {text}; margin: 0 0 10px 0;">📊 Historic Route Performance</h4>
-                <p style="margin: 0; color: {text}; font-size: 14px;">
-                    Route {flight['origin']} → {flight['destination']} has<br>
-                    <strong>{delay_pct}% historical delay rate</strong> in winter.
+            <div style="background:{bg};border:1px solid {border}44;border-left:4px solid {border};
+                        padding:15px;border-radius:10px;margin-bottom:15px;">
+                <h4 style="color:{text};margin:0 0 8px;">📊 Historic Route Performance</h4>
+                <p style="margin:0;color:#8b949e;font-size:14px;">
+                    {flight['origin']} → {flight['destination']} has<br>
+                    <strong style="color:{text};">{delay_pct}% estimated delay rate</strong> given current conditions.
                 </p>
-            </div>
-        """, unsafe_allow_html=True)
-    
-    # Congestion card
+            </div>""", unsafe_allow_html=True)
+
     with col2:
-        if flight['on_time_prob'] < 50:
-            level, indicator = "High", "🔴"
-            bg, border, text = BG_RED, RED, "#721c24"
-        elif flight['on_time_prob'] < 75:
-            level, indicator = "Moderate", "🟡"
-            bg, border, text = BG_YELLOW, YELLOW, "#856404"
-        else:
-            level, indicator = "Low", "🟢"
-            bg, border, text = BG_GREEN, GREEN, "#155724"
-        
+        if adjusted_prob < 50:   level, ind, bg, border, text = "High",     "🔴", BG_RED,    TEXT_RED,    TEXT_RED
+        elif adjusted_prob < 75: level, ind, bg, border, text = "Moderate", "🟡", BG_YELLOW, TEXT_YELLOW, TEXT_YELLOW
+        else:                    level, ind, bg, border, text = "Low",       "🟢", BG_GREEN,  TEXT_GREEN,  TEXT_GREEN
         st.markdown(f"""
-            <div style="background-color: {bg}; border-left: 6px solid {border};
-                        padding: 15px; border-radius: 8px; margin-bottom: 15px;">
-                <h4 style="color: {text}; margin: 0 0 10px 0;">🛫 Airport Congestion</h4>
-                <p style="margin: 0; color: {text}; font-size: 14px;">
-                    {indicator} <strong>{level} congestion</strong> at {flight['destination']}<br>
+            <div style="background:{bg};border:1px solid {border}44;border-left:4px solid {border};
+                        padding:15px;border-radius:10px;margin-bottom:15px;">
+                <h4 style="color:{text};margin:0 0 8px;">🛫 Airport Congestion</h4>
+                <p style="margin:0;color:#8b949e;font-size:14px;">
+                    {ind} <strong style="color:{text};">{level} congestion</strong> at {flight['destination']}<br>
                     during your arrival window.
                 </p>
-            </div>
-        """, unsafe_allow_html=True)
+            </div>""", unsafe_allow_html=True)
 
 
-def render_historical_chart(flight: dict):
-    """Show bar chart of on-time probability over time."""
-    st.markdown("### 📊 Flight Volume & Delay Risk Stability")
-    st.markdown(f"**{flight['origin']} → {flight['destination']}** · Historical Window")
-    
-    # Sample data (in real app, this would come from database)
-    dates = ["12-09", "12-10", "12-11", "12-12", "12-13", "12-14", "12-15", "12-16", "12-17", "12-18", "12-19"]
-    probs = [78, 82, 75, 80, 85, 72, 88, flight['on_time_prob'], 94, 91, 89]
+def render_historical_chart(flight, adjusted_prob):
+    st.markdown("### 📊 Delay Risk Stability — Historical Window")
+    st.markdown(f"**{flight['origin']} → {flight['destination']}**")
+
+    dates = ["12-09","12-10","12-11","12-12","12-13","12-14","12-15","12-16","12-17","12-18","12-19"]
+    probs = [78, 82, 75, 80, 85, 72, 88, adjusted_prob, 94, 91, 89]
     colors = [get_bar_color(p) for p in probs]
-    
-    # Highlight selected date
     borders = ['rgba(0,0,0,0)'] * len(dates)
-    widths = [0] * len(dates)
-    borders[7] = '#000000'  # 12-16 is index 7
-    widths[7] = 3
-    
-    fig = go.Figure(data=[
-        go.Bar(
-            x=dates, y=probs,
-            marker_color=colors,
-            marker_line_color=borders,
-            marker_line_width=widths,
-            text=[f"{p}%" for p in probs],
-            textposition='outside',
-        )
-    ])
-    
+    widths  = [0] * len(dates)
+    borders[7] = '#58a6ff'
+    widths[7]  = 2
+
+    fig = go.Figure(data=[go.Bar(
+        x=dates, y=probs,
+        marker_color=colors, marker_line_color=borders, marker_line_width=widths,
+        text=[f"{p}%" for p in probs], textposition="outside",
+        textfont=dict(color="#8b949e", size=11),
+    )])
     fig.update_layout(
-        plot_bgcolor='rgba(0,0,0,0)',
-        paper_bgcolor='rgba(0,0,0,0)',
-        xaxis=dict(title="Date"),
-        yaxis=dict(title="On-Time Probability (%)", range=[0, 105]),
-        margin=dict(l=60, r=40, t=30, b=60),
-        height=350,
+        plot_bgcolor='#0d1117', paper_bgcolor='rgba(0,0,0,0)',
+        xaxis=dict(title="Date", color="#8b949e", gridcolor="#21262d", linecolor="#30363d"),
+        yaxis=dict(title="On-Time Probability (%)", range=[0, 115], color="#8b949e", gridcolor="#21262d"),
+        margin=dict(l=60, r=40, t=30, b=60), height=350,
+        font=dict(color="#8b949e"),
     )
-    
-    # Add "Your Flight" annotation
-    fig.add_annotation(
-        x="12-16", y=flight['on_time_prob'] + 8,
-        text="Your Flight", showarrow=True, arrowhead=2,
-    )
-    
+    fig.add_annotation(x="12-16", y=adjusted_prob + 10,
+                       text="Your Flight", showarrow=True, arrowhead=2,
+                       font=dict(color="#58a6ff"), arrowcolor="#58a6ff")
+
     col1, col2 = st.columns([4, 1])
     with col1:
-        st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False}, key="risk_history_chart")
     with col2:
-        # Legend
         st.markdown(f"""
-            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px; margin-top: 20px;">
-                <p style="font-weight: bold; margin-bottom: 12px;">Risk Level Key</p>
-                <div style="margin-bottom: 8px;">
-                    <span style="display: inline-block; width: 16px; height: 16px; 
-                                 background-color: {GREEN}; border-radius: 3px;"></span>
-                    <strong>Low</strong> 68%+
-                </div>
-                <div style="margin-bottom: 8px;">
-                    <span style="display: inline-block; width: 16px; height: 16px; 
-                                 background-color: {YELLOW}; border-radius: 3px;"></span>
-                    <strong>Medium</strong> 33-67%
-                </div>
-                <div>
-                    <span style="display: inline-block; width: 16px; height: 16px; 
-                                 background-color: {RED}; border-radius: 3px;"></span>
-                    <strong>High</strong> 0-32%
-                </div>
-            </div>
-        """, unsafe_allow_html=True)
+            <div style="background:{CARD_BG};border:1px solid {BORDER_COLOR};
+                        padding:15px;border-radius:10px;margin-top:20px;">
+                <p style="font-weight:600;margin-bottom:12px;color:#e6edf3;">Risk Key</p>
+                <div style="margin-bottom:8px;color:#8b949e;"><span style="display:inline-block;width:12px;height:12px;background:{GREEN};border-radius:3px;margin-right:6px;"></span><strong style="color:{GREEN};">Low</strong> 68%+</div>
+                <div style="margin-bottom:8px;color:#8b949e;"><span style="display:inline-block;width:12px;height:12px;background:{YELLOW};border-radius:3px;margin-right:6px;"></span><strong style="color:{YELLOW};">Med</strong> 33-67%</div>
+                <div style="color:#8b949e;"><span style="display:inline-block;width:12px;height:12px;background:{RED};border-radius:3px;margin-right:6px;"></span><strong style="color:{RED};">High</strong> 0-32%</div>
+            </div>""", unsafe_allow_html=True)
 
 
-def render_alternatives(flight: dict):
-    """Show better flight alternatives if available."""
+def render_alternatives(flight, adjusted_prob):
     st.markdown("### ✅ Alternatives with Lower Risk")
-    
-    # Find flights with better probability
-    better = [f for f in flights_data 
-              if f['on_time_prob'] > flight['on_time_prob'] and f['id'] != flight['id']]
-    better = sorted(better, key=lambda x: x['on_time_prob'], reverse=True)[:3]
-    
+    source = st.session_state.get("live_flights", flights_data)
+    better = sorted(
+        [f for f in source if f["on_time_prob"] > flight["on_time_prob"] and f["id"] != flight["id"]],
+        key=lambda x: x["on_time_prob"], reverse=True
+    )[:3]
+
     if better:
         for alt in better:
-            color, _ = get_probability_color(alt['on_time_prob'])
+            color, _ = get_probability_color(alt["on_time_prob"])
             st.markdown(f"""
-                <div style="background-color: {BG_GREEN}; border-left: 6px solid {GREEN};
-                            padding: 12px 15px; border-radius: 8px; margin-bottom: 10px;">
-                    <strong style="color: #155724;">Dec 17 - {alt['airline']} {alt['flight_num']}</strong>
-                    <span style="color: #155724;"> · {alt['departure']} - {alt['arrival']}</span>
-                    <span style="background-color: {color}; color: white; padding: 5px 12px;
-                                 border-radius: 5px; font-weight: bold; float: right;">
+                <div style="background:{CARD_BG};border:1px solid {BORDER_COLOR};border-left:4px solid {color};
+                            padding:12px 15px;border-radius:10px;margin-bottom:10px;
+                            display:flex;justify-content:space-between;align-items:center;">
+                    <div>
+                        <strong style="color:#e6edf3;">{alt['airline']} {alt['flight_num']}</strong>
+                        <span style="color:#8b949e;margin-left:8px;">{alt['departure']} – {alt['arrival']}</span>
+                    </div>
+                    <span style="background:{color}22;color:{color};border:1px solid {color}66;
+                                 padding:4px 12px;border-radius:20px;font-weight:700;font-size:0.9rem;">
                         {alt['on_time_prob']}%
                     </span>
-                </div>
-            """, unsafe_allow_html=True)
+                </div>""", unsafe_allow_html=True)
     else:
         st.success("✅ You've selected one of the best options available!")
 
 
-# =============================================================================
-# MAIN RENDER FUNCTION
-# =============================================================================
-
 def render():
-    """Main function - called by app.py to display this tab."""
-    
-    # Make sure a flight is selected
-    if not st.session_state.get('selected_flight'):
+    if not st.session_state.get("selected_flight"):
         st.warning("⚠️ Please select a flight on the Flight Results tab first.")
         return
-    
+
     flight = st.session_state.selected_flight
-    prob_color, _ = get_probability_color(flight['on_time_prob'])
-    risk_level = get_risk_level(flight['on_time_prob'])
-    
-    # Header section
+
+    # Pull departure date and time from search params for forecast matching
+    params      = st.session_state.get("search_params", {})
+    dep_date    = params.get("departure_date", None)
+    dep_time    = flight.get("departure", None)  # e.g. "9:15 AM"
+
+    # Fetch weather — uses forecast endpoint for trips within 5 days,
+    # current weather for today, "unavailable" sentinel beyond 5 days
+    with st.status("🔍 Building risk analysis...", expanded=False) as status:
+        st.write("Fetching weather forecast at origin...")
+        origin_weather = fetch_airport_weather(flight["origin"], dep_date, dep_time)
+        st.write("Fetching weather forecast at destination...")
+        dest_weather   = fetch_airport_weather(flight["destination"], dep_date, dep_time)
+        st.write("Computing weather-adjusted risk score...")
+        adjusted_prob  = compute_weather_adjusted_prob(
+            flight["on_time_prob"], origin_weather, dest_weather
+        )
+        status.update(label="✅ Analysis ready!", state="complete", expanded=False)
+
+    prob_color, _ = get_probability_color(adjusted_prob)
+    risk_level = get_risk_level(adjusted_prob)
+    is_adjusted = (origin_weather is not None or dest_weather is not None)
+
     st.subheader("Flight Detail & Risk Breakdown")
     render_flight_header(flight)
-    render_probability_badge(flight, prob_color, risk_level)
-    
+    render_probability_badge(adjusted_prob, prob_color, risk_level, is_adjusted)
+
+    # Show what changed if weather affected the score
+    if is_adjusted and adjusted_prob != flight["on_time_prob"]:
+        delta = adjusted_prob - flight["on_time_prob"]
+        sign  = "+" if delta > 0 else ""
+        color = TEXT_GREEN if delta > 0 else TEXT_RED
+        st.markdown(f"""
+            <div style="display:inline-block;background:{CARD_BG};border:1px solid {BORDER_COLOR};
+                        padding:6px 14px;border-radius:20px;font-size:13px;margin-bottom:12px;">
+                Base estimate: <strong style="color:#e6edf3;">{flight['on_time_prob']}%</strong>
+                &nbsp;→&nbsp;
+                Weather adjustment: <strong style="color:{color};">{sign}{delta} pts</strong>
+            </div>""", unsafe_allow_html=True)
+
     st.markdown("---")
-    
-    # Why this prediction?
     st.markdown("## Why this prediction?")
-    st.caption("*Plain-language explanation of risk factors affecting your flight*")
-    
-    render_weather_cards(flight)
-    render_performance_cards(flight)
-    
+    st.caption("*Live weather conditions and route factors affecting your flight*")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        weather_card(flight["origin"], origin_weather, side="origin")
+    with col2:
+        weather_card(flight["destination"], dest_weather, side="dest")
+
+    render_performance_cards(flight, adjusted_prob)
     st.markdown("---")
-    
-    # Historical chart
-    render_historical_chart(flight)
-    
+    render_historical_chart(flight, adjusted_prob)
     st.markdown("---")
-    
-    # Alternatives
-    render_alternatives(flight)
+    render_alternatives(flight, adjusted_prob)

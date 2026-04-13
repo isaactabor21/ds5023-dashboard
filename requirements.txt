@@ -10,3 +10,4 @@ xgboost
 lightgbm
 catboost
 joblib
+folium
