@@ -1,2 +1,14 @@
-__pycache__
-weather_map1.py
+# Streamlit secrets — never commit
+.streamlit/secrets.toml
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
