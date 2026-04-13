@@ -51,7 +51,45 @@ ALL_AIRPORTS = sorted(AIRLINES_BY_ORIGIN.keys())
 # =============================================================================
 # AVIATIONSTACK API
 # =============================================================================
+def _fmt_time(iso_str: str) -> str:
+    """
+    Convert ISO 8601 timestamp from AviationStack (e.g. '2026-04-12T20:45:00+00:00')
+    to a readable 12-hour time string (e.g. '8:45 PM').
+    Returns 'N/A' if the string is missing or unparseable.
+    """
+    if not iso_str:
+        return "N/A"
+    from datetime import datetime, timezone
+    try:
+        # Parse with UTC offset, then convert to local-ish display (strip tz for display)
+        dt = datetime.fromisoformat(iso_str)
+        # Convert to UTC then display — airports are in US so approximate is fine for UI
+        return dt.strftime("%-I:%M %p")
+    except (ValueError, AttributeError):
+        return "N/A"
 
+
+def _calc_duration(dep_iso: str, arr_iso: str) -> str:
+    """
+    Calculate flight duration from two ISO timestamps.
+    Returns a string like '2h 05m', or 'N/A' if either is missing.
+    """
+    if not dep_iso or not arr_iso:
+        return "N/A"
+    from datetime import datetime
+    try:
+        dep_dt = datetime.fromisoformat(dep_iso)
+        arr_dt = datetime.fromisoformat(arr_iso)
+        delta  = arr_dt - dep_dt
+        total_min = int(delta.total_seconds() / 60)
+        if total_min <= 0:
+            return "N/A"
+        hours = total_min // 60
+        mins  = total_min % 60
+        return f"{hours}h {mins:02d}m"
+    except (ValueError, AttributeError):
+        return "N/A"
+    
 @st.cache_data(ttl=300)  # Cache 5 min: free tier is 100 req/month so we cache
                           # aggressively to avoid burning quota on repeated searches.
 def fetch_live_flights(origin: str, destination: str):
@@ -142,15 +180,16 @@ def fetch_live_flights(origin: str, destination: str):
                 "flight_num": f.get("flight", {}).get("iata", f"FL{i+1}"),
                 "origin": dep.get("iata", origin),
                 "destination": arr.get("iata", destination),
-                "departure": dep.get("scheduled", "N/A"),
-                "arrival": arr.get("scheduled", "N/A"),
-                "duration": "N/A",
+                "departure": _fmt_time(dep.get("scheduled")),
+                "arrival":   _fmt_time(arr.get("scheduled")),
+                "duration":  _calc_duration(dep.get("scheduled"), arr.get("scheduled")),
                 "stops": "Nonstop",
                 "on_time_prob": prob,
                 "price": 0,
                 "risk_factors": [f"Delay: {delay_min} min"] if delay_min else ["On schedule"],
                 "status": f.get("flight_status", "Scheduled").capitalize(),
             })
+
 
         return parsed
 
