@@ -47,12 +47,12 @@ def render_continue_to_airline(flight, label="Continue to Airline", compact=Fals
 
     button_html = f"""
         <a href="{html.escape(url, quote=True)}" target="_blank" rel="noopener noreferrer"
-           style="text-decoration:none;display:block;width:100%;margin:0 0 0.45rem;">
+           style="text-decoration:none;display:block;width:100%;margin:0 0 0.45rem;color:#ffffff !important;">
             <div style="
                 width:100%;
                 box-sizing:border-box;
                 background: linear-gradient(135deg, #238636 0%, #2ea043 100%);
-                color:#ffffff;
+                color:#ffffff !important;
                 border:1px solid rgba(63, 185, 80, 0.38);
                 border-radius:12px;
                 padding:{'0.7rem 0.9rem' if compact else '0.9rem 1rem'};

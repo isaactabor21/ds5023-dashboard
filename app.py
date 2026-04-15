@@ -166,9 +166,10 @@ st.markdown("""
             box-shadow: 0 4px 14px rgba(31,111,235,0.35);
         }
         .stButton > button:hover {
-            background: #388bfd;
+            background: #f85149;
+            color: #ffffff;
             transform: translateY(-1px);
-            box-shadow: 0 6px 20px rgba(56,139,253,0.45);
+            box-shadow: 0 6px 20px rgba(248,81,73,0.4);
         }
         .stButton > button:active { transform: translateY(0); }
 

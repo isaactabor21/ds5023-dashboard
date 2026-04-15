@@ -11,6 +11,7 @@ import requests
 import folium
 from streamlit_folium import st_folium
 from navigation import start_view_transition
+from ui_shell import inject_page_shell_styles, render_page_intro, render_section_intro
 
 
 @st.cache_data(ttl=600)  # Cache 10 minutes: radar frames update every 10 min on RainViewer,
@@ -63,13 +64,25 @@ def get_radar_data():
 
 
 def render():
-    st.subheader("🌤️ Live Weather Radar")
-    st.caption("Radar data from RainViewer · Updates every 10 minutes")
+    inject_page_shell_styles()
 
     can_view_results = st.session_state.get("search_completed", False)
     can_view_risk = st.session_state.get("selected_flight") is not None
+    params = st.session_state.get("search_params", {})
+    selected_flight = st.session_state.get("selected_flight")
 
-    nav_col1, nav_col2, nav_col3, nav_col4 = st.columns([1.15, 1.2, 1.35, 2.8])
+    title = "Live Weather Radar"
+    subtitle = "Inspect live weather activity before you make the final call on this trip."
+    chips = ["RainViewer live radar", "Updates every 10 minutes"]
+    if selected_flight:
+        title = f"{selected_flight['origin']} → {selected_flight['destination']}"
+        subtitle = "Use the radar to inspect live weather around your selected route before you book."
+    elif params:
+        title = f"{params.get('origin', '?')} → {params.get('destination', '?')}"
+        subtitle = "Use the radar to inspect live weather around this route before you compare flights."
+    render_page_intro("Weather Radar", title, subtitle, chips)
+
+    nav_col1, nav_col2, nav_col3, nav_col4 = st.columns([1.15, 1.15, 1.15, 3.05])
     with nav_col1:
         if st.button("Back to Home", key="weather_back_home", use_container_width=True):
             start_view_transition(
@@ -111,12 +124,11 @@ def render():
 
     host        = data["host"]
     past_frames = data["radar"]["past"]
-
-    st.success(f"✅ Loaded {len(past_frames)} radar frames")
+    render_section_intro("Radar timeline", "Use the slider to step through the most recent two hours of radar activity.")
 
     # Frame slider with key=
     frame_idx = st.slider(
-        "⏱️ Scrub through past 2 hours of radar",
+        "Past 2 hours of radar",
         min_value=0,
         max_value=len(past_frames) - 1,
         value=len(past_frames) - 1,
@@ -128,6 +140,7 @@ def render():
     radar_url = f"{host}{selected_path}/256/{{z}}/{{x}}/{{y}}/2/1_1.png"
 
     # Build map centered on mid-US
+    render_section_intro("Live radar map", f"{len(past_frames)} recent radar frames are available in this view.")
     m = folium.Map(location=[38.0336, -78.5080], zoom_start=5)
     folium.TileLayer(
         tiles=radar_url,

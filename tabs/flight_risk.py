@@ -12,6 +12,7 @@ import plotly.graph_objects as go
 from data import get_probability_color, flights_data, fetch_airport_weather, compute_weather_adjusted_prob
 from navigation import start_view_transition
 from booking import render_continue_to_airline
+from ui_shell import inject_page_shell_styles, render_page_intro, render_section_intro
 
 GREEN  = '#3fb950'
 YELLOW = '#d29922'
@@ -146,8 +147,7 @@ def render_weather_radar_callout(flight, origin_weather, dest_weather, adjusted_
     with button_col:
         st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
         if st.button("View Weather Radar", key="view_weather_radar_cta", use_container_width=True):
-            st.session_state.active_view = "weather"
-            st.rerun()
+            start_view_transition("weather", "Opening live weather radar...")
 
 
 def weather_card(iata, weather, side="origin"):
@@ -252,9 +252,6 @@ def render_performance_cards(flight, adjusted_prob):
 
 
 def render_historical_chart(flight, adjusted_prob):
-    st.markdown("### 📊 Delay Risk Stability — Historical Window")
-    st.markdown(f"**{flight['origin']} → {flight['destination']}**")
-
     dates = ["12-09","12-10","12-11","12-12","12-13","12-14","12-15","12-16","12-17","12-18","12-19"]
     probs = [78, 82, 75, 80, 85, 72, 88, adjusted_prob, 94, 91, 89]
     colors = [get_bar_color(p) for p in probs]
@@ -295,7 +292,6 @@ def render_historical_chart(flight, adjusted_prob):
 
 
 def render_alternatives(flight, adjusted_prob):
-    st.markdown("### ✅ Alternatives with Lower Risk")
     source = st.session_state.get("live_flights", flights_data)
     better = sorted(
         [f for f in source if f["on_time_prob"] > flight["on_time_prob"] and f["id"] != flight["id"]],
@@ -324,8 +320,9 @@ def render_alternatives(flight, adjusted_prob):
 
 def render_risk_navigation():
     can_view_results = st.session_state.get("search_completed", False)
+    can_view_weather = st.session_state.get("selected_flight") is not None
 
-    nav_col1, nav_col2, nav_col3 = st.columns([1.2, 1.2, 3.6])
+    nav_col1, nav_col2, nav_col3, nav_col4 = st.columns([1.15, 1.15, 1.15, 3.55])
     with nav_col1:
         if st.button("Back to Home", key="risk_back_home", use_container_width=True):
             start_view_transition(
@@ -342,14 +339,22 @@ def render_risk_navigation():
         ):
             start_view_transition("results", "Returning to your flight options...")
     with nav_col3:
+        if st.button(
+            "Weather Radar",
+            key="risk_to_weather_top",
+            use_container_width=True,
+            disabled=not can_view_weather,
+        ):
+            start_view_transition("weather", "Opening live weather radar...")
+    with nav_col4:
         if can_view_results:
-            st.caption("Back to Results keeps your current search. Back to Home starts a fresh search.")
+            st.caption("Use Home for a new route, Results to compare alternatives, and Weather Radar for live conditions.")
         else:
-            st.caption("Back to Home starts a fresh search. Flight Results will unlock after you run a search.")
+            st.caption("Use Home for a new route. Results and Weather Radar unlock as you move through the trip flow.")
 
 
 def render():
-    st.subheader("Flight Detail & Risk Breakdown")
+    inject_page_shell_styles()
     render_risk_navigation()
 
     if not st.session_state.get("selected_flight"):
@@ -379,8 +384,13 @@ def render():
     prob_color, _ = get_probability_color(adjusted_prob)
     risk_level = get_risk_level(adjusted_prob)
     is_adjusted = (origin_weather is not None or dest_weather is not None)
-
-    render_flight_header(flight)
+    dep_label = dep_date.strftime("%b %d") if hasattr(dep_date, "strftime") else "Upcoming trip"
+    render_page_intro(
+        "Risk Analysis",
+        f"{flight['airline']} {flight['flight_num']}",
+        f"{flight['origin']} → {flight['destination']} · {flight['departure']} – {flight['arrival']} · {flight['duration']}",
+        [dep_label, f"{adjusted_prob}% adjusted", risk_level.title()],
+    )
     render_probability_badge(adjusted_prob, prob_color, risk_level, is_adjusted)
     render_recommendation_summary(flight, adjusted_prob)
     render_continue_to_airline(flight)
@@ -399,10 +409,7 @@ def render():
                 Weather adjustment: <strong style="color:{color};">{sign}{delta} pts</strong>
             </div>""", unsafe_allow_html=True)
 
-    st.markdown("---")
-    st.markdown("## Why this prediction?")
-    st.caption("*Live weather conditions and route factors affecting your flight*")
-
+    render_section_intro("Why this score moved", "Weather and route conditions that are shaping this flight right now.")
     col1, col2 = st.columns(2)
     with col1:
         weather_card(flight["origin"], origin_weather, side="origin")
@@ -410,7 +417,7 @@ def render():
         weather_card(flight["destination"], dest_weather, side="dest")
 
     render_performance_cards(flight, adjusted_prob)
-    st.markdown("---")
+    render_section_intro("Historical context", "See how this flight compares with the recent reliability window.")
     render_historical_chart(flight, adjusted_prob)
-    st.markdown("---")
+    render_section_intro("Lower-risk alternatives", "If you want a safer option, these are the first flights to check.")
     render_alternatives(flight, adjusted_prob)
