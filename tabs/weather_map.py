@@ -10,6 +10,7 @@ import streamlit as st
 import requests
 import folium
 from streamlit_folium import st_folium
+from navigation import start_view_transition
 
 
 @st.cache_data(ttl=600)  # Cache 10 minutes: radar frames update every 10 min on RainViewer,
@@ -64,6 +65,41 @@ def get_radar_data():
 def render():
     st.subheader("🌤️ Live Weather Radar")
     st.caption("Radar data from RainViewer · Updates every 10 minutes")
+
+    can_view_results = st.session_state.get("search_completed", False)
+    can_view_risk = st.session_state.get("selected_flight") is not None
+
+    nav_col1, nav_col2, nav_col3, nav_col4 = st.columns([1.15, 1.2, 1.35, 2.8])
+    with nav_col1:
+        if st.button("Back to Home", key="weather_back_home", use_container_width=True):
+            start_view_transition(
+                "home",
+                "Returning you to the search page...",
+                action="reset_search_state",
+            )
+    with nav_col2:
+        if st.button(
+            "Flight Results",
+            key="weather_to_results",
+            use_container_width=True,
+            disabled=not can_view_results,
+        ):
+            start_view_transition("results", "Returning to your flight options...")
+    with nav_col3:
+        if st.button(
+            "Risk Analysis",
+            key="weather_to_risk",
+            use_container_width=True,
+            disabled=not can_view_risk,
+        ):
+            start_view_transition("risk", "Returning to your risk breakdown...")
+    with nav_col4:
+        if can_view_results and can_view_risk:
+            st.caption("Switch between radar, results, and risk analysis without losing your current trip.")
+        elif can_view_results:
+            st.caption("Flight Results is available. Risk Analysis unlocks after you select a flight.")
+        else:
+            st.caption("Start with a search to unlock Flight Results and Risk Analysis.")
 
     with st.spinner("📡 Loading radar data..."):
         data = get_radar_data()

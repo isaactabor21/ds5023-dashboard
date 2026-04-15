@@ -285,6 +285,17 @@ def render():
 
     st.caption("Start with the Flights tab to pick an option. Open Analytics when you want the comparison charts.")
 
+    nav_col1, nav_col2 = st.columns([1.2, 4])
+    with nav_col1:
+        if st.button("Back to Home", key="results_back_home", use_container_width=True):
+            start_view_transition(
+                "home",
+                "Returning you to the search page...",
+                action="reset_search_state",
+            )
+    with nav_col2:
+        st.caption("Need a different route? Go back home to start a fresh search.")
+
     source_flights = st.session_state.get("live_flights", flights_data)
     airline_names = ["All Airlines"] + sorted({flight["airline"] for flight in source_flights})
     if st.session_state.get("results_airline_filter") not in airline_names:

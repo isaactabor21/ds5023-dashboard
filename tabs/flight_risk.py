@@ -10,6 +10,7 @@ import streamlit as st
 from datetime import datetime
 import plotly.graph_objects as go
 from data import get_probability_color, flights_data, fetch_airport_weather, compute_weather_adjusted_prob
+from navigation import start_view_transition
 
 GREEN  = '#3fb950'
 YELLOW = '#d29922'
@@ -320,7 +321,36 @@ def render_alternatives(flight, adjusted_prob):
         st.success("✅ You've selected one of the best options available!")
 
 
+def render_risk_navigation():
+    can_view_results = st.session_state.get("search_completed", False)
+
+    nav_col1, nav_col2, nav_col3 = st.columns([1.2, 1.2, 3.6])
+    with nav_col1:
+        if st.button("Back to Home", key="risk_back_home", use_container_width=True):
+            start_view_transition(
+                "home",
+                "Returning you to the search page...",
+                action="reset_search_state",
+            )
+    with nav_col2:
+        if st.button(
+            "Back to Results",
+            key="risk_back_results",
+            use_container_width=True,
+            disabled=not can_view_results,
+        ):
+            start_view_transition("results", "Returning to your flight options...")
+    with nav_col3:
+        if can_view_results:
+            st.caption("Back to Results keeps your current search. Back to Home starts a fresh search.")
+        else:
+            st.caption("Back to Home starts a fresh search. Flight Results will unlock after you run a search.")
+
+
 def render():
+    st.subheader("Flight Detail & Risk Breakdown")
+    render_risk_navigation()
+
     if not st.session_state.get("selected_flight"):
         st.warning("⚠️ Please select a flight on the Flight Results page first.")
         return
@@ -349,7 +379,6 @@ def render():
     risk_level = get_risk_level(adjusted_prob)
     is_adjusted = (origin_weather is not None or dest_weather is not None)
 
-    st.subheader("Flight Detail & Risk Breakdown")
     render_flight_header(flight)
     render_probability_badge(adjusted_prob, prob_color, risk_level, is_adjusted)
     render_recommendation_summary(flight, adjusted_prob)
