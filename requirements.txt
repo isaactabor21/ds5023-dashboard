@@ -11,3 +11,4 @@ lightgbm
 catboost
 joblib
 folium
+google-genai

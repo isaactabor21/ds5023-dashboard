@@ -343,13 +343,14 @@ defaults = {
     "transition_started_at": None,
     "transition_hold_until": None,
     "transition_error": None,
+    "assistant_messages": [],  # persists SkyAssist chat history across reruns
 }
 for key, val in defaults.items():
     if key not in st.session_state:
         st.session_state[key] = val
 
 # ── Tab modules ───────────────────────────────────────────────────────────────
-from tabs import home, flight_results, flight_risk, weather_map
+from tabs import home, flight_results, flight_risk, weather_map, assistant
 from booking import render_continue_to_airline
 
 
@@ -502,18 +503,20 @@ if transition_error:
 
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
-NAV_OPTIONS = ["home", "results", "risk", "weather"]
+NAV_OPTIONS = ["home", "results", "risk", "weather", "assistant"]
 NAV_LABELS = {
     "home": "Home",
     "results": "Flight Results",
     "risk": "Risk Analysis",
     "weather": "Weather Radar",
+    "assistant": "AI Assistant",
 }
 NAV_ICONS = {
     "home": "🏠",
     "results": "📋",
     "risk": "⚠️",
     "weather": "🌤️",
+    "assistant": "🤖",
 }
 
 
@@ -565,6 +568,8 @@ elif active_view == "results":
     flight_results.render()
 elif active_view == "risk":
     flight_risk.render()
+elif active_view == "assistant":
+    assistant.render()
 else:
     weather_map.render()
 
