@@ -1,11 +1,9 @@
-
 """
 Home Tab — Air Aware
 ====================
 Search form with full Milestone 3 adaptive interactivity:
-  - Dynamic UI: trip type radio shows/hides return date (1);
-                "Advanced Options" expander shows airline + class filters (2)
-  - Widget keys: all interactive widgets have key= with comments on 3+
+  - Dynamic UI: "Advanced Options" expander shows airline + class filters
+  - Widget keys: all interactive widgets have key= with comments
   - Callbacks: on_click reset button; on_change origin clears airline selection
   - Dependent dropdowns: airline list updates based on selected origin airport
 """
@@ -235,18 +233,15 @@ def sync_search_widgets(search_params):
         destination = destination_options[0]
 
     departure_date = search_params.get("departure_date", date.today() + timedelta(days=7))
-    return_date = search_params.get("return_date") or (departure_date + timedelta(days=7))
 
     available_airlines = ["All Airlines"] + get_airlines_for_origin(origin)
     preferred_airline = search_params.get("preferred_airline", "All Airlines")
     if preferred_airline not in available_airlines:
         preferred_airline = "All Airlines"
 
-    st.session_state.trip_type_radio = search_params.get("trip_type", "One-Way")
     st.session_state.origin_select = origin
     st.session_state.destination_select = destination
     st.session_state.departure_date_input = departure_date
-    st.session_state.return_date_input = return_date
     st.session_state.passengers_select = search_params.get("passengers", "1 Adult")
     st.session_state.airline_filter = preferred_airline
     st.session_state.cabin_class_select = search_params.get("cabin_class", "Economy")
@@ -357,19 +352,6 @@ def render():
         st.markdown("<div class='planner-main-anchor'></div>", unsafe_allow_html=True)
         render_planner_header(step)
 
-        st.markdown("<div class='trip-planner-section-label'>Trip Type</div>", unsafe_allow_html=True)
-        st.markdown(
-            "<div class='trip-planner-section-copy'>Choose the shape of this trip before you set the route.</div>",
-            unsafe_allow_html=True,
-        )
-        trip_type = st.radio(
-            "Select trip type:",
-            ["One-Way", "Round-Trip", "Multi-City"],
-            horizontal=True,
-            label_visibility="collapsed",
-            key="trip_type_radio",  # key= ensures reset callback can target this widget
-        )
-
         st.markdown("<div class='trip-planner-divider'></div>", unsafe_allow_html=True)
         st.markdown("<div class='trip-planner-section-label'>Route</div>", unsafe_allow_html=True)
         st.markdown(
@@ -432,10 +414,7 @@ def render():
         )
 
         with st.form("flight_search_form"):
-            if trip_type == "Round-Trip":
-                col3, col4, col5 = st.columns(3)
-            else:
-                col3, col5 = st.columns(2)
+            col3, col5 = st.columns(2)
 
             with col3:
                 st.markdown("**Departure Date**")
@@ -445,20 +424,7 @@ def render():
                     value=date.today() + timedelta(days=7),
                     label_visibility="collapsed",
                     key="departure_date_input",  # key= required so reset_search() can target it
-                                                  # and return date min_value stays in sync
                 )
-
-            return_date = None
-            if trip_type == "Round-Trip":
-                with col4:
-                    st.markdown("**Return Date**")
-                    return_date = st.date_input(
-                        "Return",
-                        min_value=departure_date + timedelta(days=1),
-                        value=departure_date + timedelta(days=7),
-                        label_visibility="collapsed",
-                        key="return_date_input",
-                    )
 
             with col5:
                 st.markdown("**Passengers**")
@@ -480,10 +446,6 @@ def render():
                     st.error("⚠️ Origin and destination cannot be the same airport.")
                     st.stop()
 
-                if trip_type == "Round-Trip" and return_date and return_date <= departure_date:
-                    st.error("⚠️ Return date must be after your departure date.")
-                    st.stop()
-
                 if departure_date < date.today():
                     st.error("⚠️ Departure date cannot be in the past.")
                     st.stop()
@@ -492,9 +454,7 @@ def render():
                     "origin": origin,
                     "destination": destination,
                     "departure_date": departure_date,
-                    "return_date": return_date,
                     "passengers": passengers,
-                    "trip_type": trip_type,
                     "preferred_airline": preferred_airline,
                     "cabin_class": cabin_class,
                 }
