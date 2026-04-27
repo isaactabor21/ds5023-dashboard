@@ -65,10 +65,8 @@ def parse_duration_minutes(duration_str):
         return 9999
 
 
-def reset_results_filters(sort_by="On-Time Probability"):
-    for key, value in FILTER_DEFAULTS.items():
-        st.session_state[key] = value
-    st.session_state.sort_by_select = sort_by
+def trigger_reset_results_filters():
+    st.session_state.reset_results_filters = True
 
 
 def build_flight_labels(flights):
@@ -352,6 +350,22 @@ def render():
     if st.session_state.get("results_airline_filter") not in airline_names:
         st.session_state.results_airline_filter = "All Airlines"
 
+    # Apply filter reset BEFORE widgets exist
+    if st.session_state.get("reset_results_filters"):
+        for key, value in FILTER_DEFAULTS.items():
+            st.session_state[key] = value
+
+        st.session_state.reset_results_filters = False
+
+    if st.session_state.get("apply_safest_filters"):
+        st.session_state.risk_filter_select = "Low Risk (67-100%)"
+        st.session_state.sort_by_select = "On-Time Probability"
+        st.session_state.time_filter_select = "All"
+        st.session_state.price_filter_select = "All"
+        st.session_state.results_airline_filter = "All Airlines"
+
+        st.session_state.apply_safest_filters = False
+
     col1, col2, col3, col4, col5 = st.columns(5)
     with col1:
         risk_filter = st.selectbox("Risk", ["All","Low Risk (67-100%)","Medium Risk (33-66%)","High Risk (0-32%)"], key="risk_filter_select")
@@ -367,6 +381,7 @@ def render():
         airline_filter = st.selectbox("Airline", airline_names, key="results_airline_filter")
 
     action_col1, action_col2, _ = st.columns([1, 1, 3])
+
     with action_col1:
         if st.button(
             "Clear Filters",
@@ -374,8 +389,9 @@ def render():
             use_container_width=True,
             help="Reset all filters and show the full set of flight options again.",
         ):
-            reset_results_filters()
+            trigger_reset_results_filters()
             st.rerun()
+
     with action_col2:
         if st.button(
             "Show Safest Flights",
@@ -383,11 +399,8 @@ def render():
             use_container_width=True,
             help="Keep only low-risk flights and sort them by reliability.",
         ):
-            reset_results_filters()
-            st.session_state.risk_filter_select = "Low Risk (67-100%)"
-            st.session_state.sort_by_select = "On-Time Probability"
+            st.session_state.apply_safest_filters = True
             st.rerun()
-
     if risk_filter == "High Risk (0-32%)" and price_filter == "Over $400":
         st.warning("⚠️ High-risk flights rarely exceed $400 — you may get no results with this combination.")
 

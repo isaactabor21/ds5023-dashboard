@@ -1,3 +1,4 @@
+
 """
 Home Tab — Air Aware
 ====================
@@ -22,6 +23,7 @@ RESULTS_FILTER_DEFAULTS = {
     "results_airline_filter": "All Airlines",
 }
 
+# Fancy advanced CSS
 HOME_PLANNER_CSS = """
 <style>
 div[data-testid="stVerticalBlock"]:has(.planner-main-anchor) {

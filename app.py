@@ -354,6 +354,7 @@ from tabs import home, flight_results, flight_risk, weather_map, assistant
 from booking import render_continue_to_airline
 
 
+# Fancy advanced CSS animation for page transitions, plus some helper functions to manage the state and timing of the transition.
 def render_transition_overlay():
     message = st.session_state.get("transition_message") or "Preparing your next step..."
     st.markdown(
@@ -448,12 +449,7 @@ st.markdown("""
     <div class="air-aware-header">
         <div>
             <h1>✈️ Air Aware</h1>
-            <div class="tagline">Predict delays. Travel smarter. Fly confident.</div>
-        </div>
-        <div class="header-stats">
-            <div class="header-stat"><div class="number">98%</div><div class="label">Accuracy</div></div>
-            <div class="header-stat"><div class="number">500+</div><div class="label">Airports</div></div>
-            <div class="header-stat"><div class="number">Live</div><div class="label">Weather Data</div></div>
+            <div class="tagline">Travel stress-free. Less uncertainty. More relaxation.</div>
         </div>
     </div>
 """, unsafe_allow_html=True)
@@ -575,7 +571,7 @@ else:
 
 st.markdown("""
     <div class="footer">
-        <p>✈️ <strong>Air Aware</strong> · Powered by Machine Learning & Real-Time Data</p>
+        <p>✈️ <strong>Air Aware</strong> · Powered by Real-Time Data</p>
         <p>© 2026 Air Aware · DS 5023 Project</p>
     </div>
 """, unsafe_allow_html=True)
