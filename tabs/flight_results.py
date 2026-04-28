@@ -220,7 +220,7 @@ def render_flight_card(flight, labels=None):
         st.markdown(
             f"""
             <div style="
-                font-size:1.5rem;
+                font-size:.95rem;
                 font-weight:600;
                 color:#8b949e;
                 font-family:'Space Mono',monospace;
