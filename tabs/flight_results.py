@@ -214,17 +214,29 @@ def render_flight_card(flight, labels=None):
 
     with col3:
         price = flight["price"]
-        if price:
-            st.markdown(f"<div style='font-size:1.6rem;font-weight:700;color:#58a6ff;font-family:Space Mono,monospace;'>${price}</div>", unsafe_allow_html=True)
-        else:
-            st.caption("Price N/A")
+
+        price_text = f"${price}" if price else "Price N/A"
+
+        st.markdown(
+            f"""
+            <div style="
+                font-size:1.5rem;
+                font-weight:600;
+                color:#8b949e;
+                font-family:'Space Mono',monospace;
+                text-align:left;
+            ">
+                {price_text}
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
     with col4:
         if st.button(
-            "Select ✈️",
+            "Review Flight",
             key=f"select_{flight['id']}",
             use_container_width=True,
-            type="primary",
             help="Open Risk Analysis for this flight and review weather-adjusted delay risk.",
         ):
             st.session_state.selected_flight = flight
